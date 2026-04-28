@@ -14,9 +14,10 @@ public class Usuario {
 
     private String nombre;
 
-    @Column(unique = true)
+    @Column(unique = true, nullable = true)
     private String email;
 
+    @Column(nullable = true)
     private String contrasena;
 
     // MAYOR o FAMILIAR
