@@ -20,7 +20,7 @@ public class ServicioAsistente {
     @Value("${gemini.api.key}")
     private String apiKey;
 
-    private final String urlGemini = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+    private final String urlGemini = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
     // Prompt del sistema que define la personalidad del asistente
     private final String promptSistema = """

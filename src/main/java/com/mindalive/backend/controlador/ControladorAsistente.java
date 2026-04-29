@@ -22,7 +22,8 @@ public class ControladorAsistente {
             String respuesta = servicioAsistente.enviarMensaje(mayorId, mensaje);
             return ResponseEntity.ok(Map.of("respuesta", respuesta));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage(), "causa", e.getClass().getName()));
         }
     }
 }
