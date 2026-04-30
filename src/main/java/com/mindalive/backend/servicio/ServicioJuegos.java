@@ -343,69 +343,87 @@ public class ServicioJuegos {
         Random random = new Random();
 
         List<String> elementos = new ArrayList<>();
-        String raroIndex;
+        String elementoRaro = "";
         String pista = "";
 
         if (nivel == 1) {
-            // Diferencia de color obvia
             List<String[]> grupos = Arrays.asList(
                     new String[]{"🔴", "🔴", "🔴", "🔵"},
                     new String[]{"🟡", "🟡", "🟡", "🟢"},
                     new String[]{"⬛", "⬛", "⬛", "⬜"},
-                    new String[]{"🟣", "🟣", "🟣", "🟠"}
+                    new String[]{"🟣", "🟣", "🟣", "🟠"},
+                    new String[]{"🔵", "🔵", "🔵", "🔴"},
+                    new String[]{"🟢", "🟢", "🟢", "🟡"},
+                    new String[]{"🟠", "🟠", "🟠", "⬛"},
+                    new String[]{"⬜", "⬜", "⬜", "🟣"},
+                    new String[]{"🔴", "🔴", "🔴", "🟡"},
+                    new String[]{"🔵", "🔵", "🔵", "🟢"},
+                    new String[]{"🟣", "🟣", "🟣", "⬛"},
+                    new String[]{"🟠", "🟠", "🟠", "🔵"}
             );
             String[] grupo = grupos.get(random.nextInt(grupos.size()));
-            int posRaro = random.nextInt(4);
-            for (int i = 0; i < 4; i++) elementos.add(i == posRaro ? grupo[3] : grupo[0]);
+            elementoRaro = grupo[3];
+            for (int i = 0; i < 3; i++) elementos.add(grupo[0]);
+            elementos.add(grupo[3]);
+            Collections.shuffle(elementos);
             pista = "¿Cuál es de color diferente?";
+
         } else if (nivel == 2) {
-            // Animales vs objetos
             List<String[]> grupos = Arrays.asList(
                     new String[]{"🐶", "🐱", "🐦", "🚗"},
                     new String[]{"🐘", "🦁", "🐯", "🏠"},
                     new String[]{"🐟", "🐬", "🦈", "🌵"},
-                    new String[]{"🐔", "🦆", "🦅", "🍕"}
+                    new String[]{"🐔", "🦆", "🦅", "🍕"},
+                    new String[]{"🐰", "🐻", "🦊", "✈️"},
+                    new String[]{"🐸", "🦎", "🐢", "🎸"},
+                    new String[]{"🐺", "🦌", "🐗", "🚀"},
+                    new String[]{"🦋", "🐝", "🐛", "🏆"}
             );
             String[] grupo = grupos.get(random.nextInt(grupos.size()));
-            Collections.shuffle(Arrays.asList(grupo));
-            elementos.addAll(Arrays.asList(grupo));
+            elementoRaro = grupo[3];
+            for (int i = 0; i < 3; i++) elementos.add(grupo[i]);
+            elementos.add(grupo[3]);
+            Collections.shuffle(elementos);
             pista = "¿Cuál no es un animal?";
+
         } else if (nivel == 3) {
-            // Frutas vs verduras
             List<String[]> grupos = Arrays.asList(
                     new String[]{"🍎", "🍊", "🍋", "🥦"},
                     new String[]{"🍇", "🍓", "🍑", "🥕"},
                     new String[]{"🍌", "🍉", "🍒", "🧅"},
-                    new String[]{"🥝", "🍍", "🥭", "🌽"}
+                    new String[]{"🥝", "🍍", "🥭", "🌽"},
+                    new String[]{"🍐", "🍈", "🫐", "🥬"},
+                    new String[]{"🍏", "🍅", "🍆", "🥒"},
+                    new String[]{"🫒", "🍋", "🍇", "🥔"},
+                    new String[]{"🍑", "🍒", "🍓", "🧄"}
             );
             String[] grupo = grupos.get(random.nextInt(grupos.size()));
-            Collections.shuffle(Arrays.asList(grupo));
-            elementos.addAll(Arrays.asList(grupo));
+            elementoRaro = grupo[3];
+            for (int i = 0; i < 3; i++) elementos.add(grupo[i]);
+            elementos.add(grupo[3]);
+            Collections.shuffle(elementos);
             pista = "¿Cuál no es una fruta?";
+
         } else if (nivel == 4) {
-            // Números pares vs impares
-            List<Integer> numeros = new ArrayList<>();
             boolean parMayoria = random.nextBoolean();
             List<Integer> pool = new ArrayList<>();
-            if (parMayoria) {
-                for (int i = 1; i <= 20; i++) if (i % 2 == 0) pool.add(i);
-            } else {
-                for (int i = 1; i <= 20; i++) if (i % 2 != 0) pool.add(i);
-            }
-            Collections.shuffle(pool);
-            for (int i = 0; i < 3; i++) elementos.add(String.valueOf(pool.get(i)));
             List<Integer> contrarios = new ArrayList<>();
             if (parMayoria) {
-                for (int i = 1; i <= 20; i++) if (i % 2 != 0) contrarios.add(i);
+                for (int i = 2; i <= 20; i += 2) pool.add(i);
+                for (int i = 1; i <= 19; i += 2) contrarios.add(i);
             } else {
-                for (int i = 1; i <= 20; i++) if (i % 2 == 0) contrarios.add(i);
+                for (int i = 1; i <= 19; i += 2) pool.add(i);
+                for (int i = 2; i <= 20; i += 2) contrarios.add(i);
             }
+            Collections.shuffle(pool);
             Collections.shuffle(contrarios);
-            elementos.add(String.valueOf(contrarios.get(0)));
+            for (int i = 0; i < 3; i++) elementos.add(String.valueOf(pool.get(i)));
+            elementoRaro = String.valueOf(contrarios.get(0));
+            elementos.add(elementoRaro);
             Collections.shuffle(elementos);
             pista = parMayoria ? "¿Cuál no es par?" : "¿Cuál no es impar?";
+
         } else if (nivel == 5) {
-            // Palabras por categoría
             List<String[]> grupos = Arrays.asList(
                     new String[]{"Mesa", "Silla", "Sofá", "Perro"},
                     new String[]{"Rojo", "Azul", "Verde", "Coche"},
@@ -413,11 +431,13 @@ public class ServicioJuegos {
                     new String[]{"Lunes", "Martes", "Miércoles", "Enero"}
             );
             String[] grupo = grupos.get(random.nextInt(grupos.size()));
-            Collections.shuffle(Arrays.asList(grupo));
-            elementos.addAll(Arrays.asList(grupo));
+            elementoRaro = grupo[3];
+            for (int i = 0; i < 3; i++) elementos.add(grupo[i]);
+            elementos.add(grupo[3]);
+            Collections.shuffle(elementos);
             pista = "¿Cuál no pertenece al grupo?";
+
         } else {
-            // Nivel 6: lógica abstracta
             List<String[]> grupos = Arrays.asList(
                     new String[]{"2", "4", "8", "9"},
                     new String[]{"3", "6", "9", "10"},
@@ -425,18 +445,11 @@ public class ServicioJuegos {
                     new String[]{"Piano", "Guitarra", "Violín", "Pintura"}
             );
             String[] grupo = grupos.get(random.nextInt(grupos.size()));
-            Collections.shuffle(Arrays.asList(grupo));
-            elementos.addAll(Arrays.asList(grupo));
+            elementoRaro = grupo[3];
+            for (int i = 0; i < 3; i++) elementos.add(grupo[i]);
+            elementos.add(grupo[3]);
+            Collections.shuffle(elementos);
             pista = "¿Cuál no encaja?";
-        }
-
-        // El elemento raro es el último antes de mezclar, lo identificamos por posición
-        // Buscamos cuál es el que aparece solo una vez
-        Map<String, Integer> conteo = new HashMap<>();
-        for (String e : elementos) conteo.put(e, conteo.getOrDefault(e, 0) + 1);
-        String elementoRaro = "";
-        for (Map.Entry<String, Integer> entry : conteo.entrySet()) {
-            if (entry.getValue() == 1) { elementoRaro = entry.getKey(); break; }
         }
 
         Map<String, Object> resultado = new HashMap<>();
