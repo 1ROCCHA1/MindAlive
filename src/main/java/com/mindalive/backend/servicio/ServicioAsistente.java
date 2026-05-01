@@ -1,6 +1,7 @@
 package com.mindalive.backend.servicio;
 
 import com.mindalive.backend.documento.Conversacion;
+import com.mindalive.backend.documento.PerfilMayor;
 import com.mindalive.backend.repositorio.ConversacionRepositorio;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,13 +18,15 @@ public class ServicioAsistente {
     @Autowired
     private ConversacionRepositorio conversacionRepositorio;
 
+    @Autowired
+    private ServicioPerfil servicioPerfil;
+
     @Value("${gemini.api.key}")
     private String apiKey;
 
     private final String urlGemini = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
-    // Prompt del sistema que define la personalidad del asistente
-    private final String promptSistema = """
+    private final String promptBase = """
     Eres Mindi, una asistente de compañía para personas mayores.
     
     PERSONALIDAD BASE:
@@ -61,16 +64,68 @@ public class ServicioAsistente {
     Cuando el mayor parezca activo y con energía puedes sugerir jugar a algo de forma natural.
     Nunca como obligación. Si rechaza, no insistas.
     
-    PERFIL:
-    Si se te proporciona información sobre el mayor, úsala para calibrar tono y temas.
-    Si lo que observas en la conversación contradice el perfil, confía en lo que ves ahora.
-    
     Hablas siempre en español. No tienes prisa.
     """;
 
+    private String construirPromptConPerfil(Long mayorId) {
+        try {
+            PerfilMayor perfil = servicioPerfil.obtenerPerfilCompleto(mayorId);
+            if (perfil == null) return promptBase;
+
+            StringBuilder sb = new StringBuilder(promptBase);
+            sb.append("\n\nINFORMACIÓN SOBRE ESTA PERSONA:\n");
+
+            PerfilMayor.CapaPermanente capa = perfil.getCapaPermanente();
+            if (capa != null) {
+                if (capa.getDescripcionCuidador() != null && !capa.getDescripcionCuidador().isEmpty()) {
+                    sb.append("Descripción: ").append(capa.getDescripcionCuidador()).append("\n");
+                }
+                if (capa.getCaracter() != null && !capa.getCaracter().isEmpty()) {
+                    sb.append("Carácter: ").append(capa.getCaracter()).append("\n");
+                }
+                if (capa.getFamilia() != null && !capa.getFamilia().isEmpty()) {
+                    sb.append("Familia: ").append(capa.getFamilia()).append("\n");
+                }
+                if (capa.getLimitacionesFisicas() != null && !capa.getLimitacionesFisicas().isEmpty()) {
+                    sb.append("Limitaciones físicas: ").append(capa.getLimitacionesFisicas()).append("\n");
+                }
+                if (!capa.getTemasQueLeGustan().isEmpty()) {
+                    sb.append("Temas que le gustan: ").append(String.join(", ", capa.getTemasQueLeGustan())).append("\n");
+                }
+                if (!capa.getTemasTabu().isEmpty()) {
+                    sb.append("Temas a evitar: ").append(String.join(", ", capa.getTemasTabu())).append("\n");
+                }
+                if (capa.isTieneProblemasAuditivos()) {
+                    sb.append("Tiene problemas de audición: habla claro y con frases cortas.\n");
+                }
+                if (capa.isSeIrritaSiSeLeTratatComoInutil()) {
+                    sb.append("Se irrita si se le trata como incapaz: nunca anticipes lo que puede hacer solo.\n");
+                }
+            }
+
+            if (!perfil.getCapaRasgosEstables().isEmpty()) {
+                sb.append("Rasgos observados: ");
+                for (PerfilMayor.RasgoEstable rasgo : perfil.getCapaRasgosEstables()) {
+                    sb.append(rasgo.getRasgo()).append(", ");
+                }
+                sb.append("\n");
+            }
+
+            if (perfil.getCapaEstadoReciente() != null && !perfil.getCapaEstadoReciente().isEmpty()) {
+                sb.append("Estado reciente: ").append(perfil.getCapaEstadoReciente()).append("\n");
+            }
+
+            sb.append("\nSi lo que observas en la conversación contradice esta información, confía en lo que ves ahora.");
+
+            return sb.toString();
+
+        } catch (Exception e) {
+            return promptBase;
+        }
+    }
+
     public String enviarMensaje(Long mayorId, String mensajeUsuario) {
 
-        // Recuperamos el historial de la conversación activa o creamos una nueva
         List<Conversacion> conversaciones = conversacionRepositorio.findByMayorIdOrderByInicioDesc(mayorId);
         Conversacion conversacion;
 
@@ -82,18 +137,18 @@ public class ServicioAsistente {
             conversacion = conversaciones.get(0);
         }
 
-        // Construimos el historial para enviar a Gemini
         List<Map<String, Object>> contents = new ArrayList<>();
 
-        // Añadimos el prompt del sistema como primer mensaje
+        // Prompt con perfil integrado
+        String promptCompleto = construirPromptConPerfil(mayorId);
+
         Map<String, Object> sistemaPart = new HashMap<>();
-        sistemaPart.put("text", promptSistema);
+        sistemaPart.put("text", promptCompleto);
         Map<String, Object> sistemaContent = new HashMap<>();
         sistemaContent.put("role", "user");
         sistemaContent.put("parts", List.of(sistemaPart));
         contents.add(sistemaContent);
 
-        // Añadimos respuesta vacía del modelo para el prompt del sistema
         Map<String, Object> sistemaRespuestaPart = new HashMap<>();
         sistemaRespuestaPart.put("text", "Entendido, soy Mindi y estoy aquí para acompañarte.");
         Map<String, Object> sistemaRespuestaContent = new HashMap<>();
@@ -101,7 +156,6 @@ public class ServicioAsistente {
         sistemaRespuestaContent.put("parts", List.of(sistemaRespuestaPart));
         contents.add(sistemaRespuestaContent);
 
-        // Añadimos el historial previo de la conversación
         for (Conversacion.Mensaje msg : conversacion.getMensajes()) {
             Map<String, Object> part = new HashMap<>();
             part.put("text", msg.getContenido());
@@ -111,7 +165,6 @@ public class ServicioAsistente {
             contents.add(content);
         }
 
-        // Añadimos el mensaje actual del usuario
         Map<String, Object> nuevoPart = new HashMap<>();
         nuevoPart.put("text", mensajeUsuario);
         Map<String, Object> nuevoContent = new HashMap<>();
@@ -119,11 +172,9 @@ public class ServicioAsistente {
         nuevoContent.put("parts", List.of(nuevoPart));
         contents.add(nuevoContent);
 
-        // Construimos el body de la petición
         Map<String, Object> body = new HashMap<>();
         body.put("contents", contents);
 
-        // Llamamos a la API de Gemini
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
@@ -133,7 +184,6 @@ public class ServicioAsistente {
         String urlConKey = urlGemini + "?key=" + apiKey;
         ResponseEntity<Map> respuesta = restTemplate.postForEntity(urlConKey, peticion, Map.class);
 
-        // Extraemos el texto de la respuesta
         String textoRespuesta = "";
         try {
             List<Map> candidates = (List<Map>) respuesta.getBody().get("candidates");
@@ -144,7 +194,6 @@ public class ServicioAsistente {
             textoRespuesta = "Lo siento, no he podido procesar tu mensaje. ¿Puedes repetirlo?";
         }
 
-        // Guardamos el mensaje del usuario y la respuesta en MongoDB
         Conversacion.Mensaje msgUsuario = new Conversacion.Mensaje();
         msgUsuario.setRol("usuario");
         msgUsuario.setContenido(mensajeUsuario);
