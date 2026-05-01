@@ -1,5 +1,7 @@
 package com.mindalive.backend.servicio;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindalive.backend.documento.Conversacion;
 import com.mindalive.backend.documento.PerfilMayor;
 import com.mindalive.backend.repositorio.ConversacionRepositorio;
@@ -8,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.http.*;
+
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -63,6 +66,13 @@ public class ServicioAsistente {
     JUEGOS:
     Cuando el mayor parezca activo y con energía puedes sugerir jugar a algo de forma natural.
     Nunca como obligación. Si rechaza, no insistas.
+    
+    ACTIVIDADES DIARIAS:
+    Durante la conversación, si el contexto lo permite, sugiere de forma natural una o dos actividades
+    adaptadas a esta persona. No como una lista de tareas, sino como parte de la conversación.
+    Por ejemplo: "¿Has dado un paseo hoy?" o "¿Has hablado con tu hijo últimamente?".
+    Si confirma haberla hecho, regístralo internamente. Si no, anímale sin presionar.
+    Las actividades deben adaptarse a sus limitaciones físicas y preferencias del perfil.
     
     Hablas siempre en español. No tienes prisa.
     """;
@@ -124,6 +134,99 @@ public class ServicioAsistente {
         }
     }
 
+    private String llamarGemini(List<Map<String, Object>> contents) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("contents", contents);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<Map<String, Object>> peticion = new HttpEntity<>(body, headers);
+        RestTemplate restTemplate = new RestTemplate();
+
+        String urlConKey = urlGemini + "?key=" + apiKey;
+        ResponseEntity<Map> respuesta = restTemplate.postForEntity(urlConKey, peticion, Map.class);
+
+        try {
+            List<Map> candidates = (List<Map>) respuesta.getBody().get("candidates");
+            Map content = (Map) candidates.get(0).get("content");
+            List<Map> parts = (List<Map>) content.get("parts");
+            return (String) parts.get(0).get("text");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private void evaluarConversacion(Conversacion conversacion) {
+        try {
+            StringBuilder historial = new StringBuilder();
+            for (Conversacion.Mensaje msg : conversacion.getMensajes()) {
+                historial.append(msg.getRol().equals("usuario") ? "Mayor: " : "Mindi: ");
+                historial.append(msg.getContenido()).append("\n");
+            }
+
+            String promptEvaluacion = """
+            Analiza esta conversación entre Mindi y un mayor y responde ÚNICAMENTE en este formato JSON exacto, sin texto adicional:
+            {
+                "animo": <número del 0 al 10>,
+                "sociabilidad": <número del 0 al 10>,
+                "cognitivo": <número del 0 al 10>,
+                "observacion": "<frase breve de máximo 20 palabras>",
+                "actividades": ["<actividad 1>", "<actividad 2>"]
+            }
+            
+            Criterios:
+            - animo: 0=muy triste/angustiado, 5=neutro, 10=muy positivo/alegre
+            - sociabilidad: 0=monosílabos/cerrado, 5=normal, 10=muy comunicativo/abierto
+            - cognitivo: 0=confuso/incoherente, 5=normal, 10=muy claro/lucido
+            - observacion: lo más relevante observado en pocas palabras
+            - actividades: lista de 1-3 actividades que Mindi sugirió o que el mayor mencionó haber hecho
+            
+            Conversación:
+            """ + historial.toString();
+
+            List<Map<String, Object>> contents = new ArrayList<>();
+            Map<String, Object> part = new HashMap<>();
+            part.put("text", promptEvaluacion);
+            Map<String, Object> content = new HashMap<>();
+            content.put("role", "user");
+            content.put("parts", List.of(part));
+            contents.add(content);
+
+            String respuesta = llamarGemini(contents);
+
+            respuesta = respuesta.trim();
+            if (respuesta.startsWith("```json")) respuesta = respuesta.substring(7);
+            if (respuesta.startsWith("```")) respuesta = respuesta.substring(3);
+            if (respuesta.endsWith("```")) respuesta = respuesta.substring(0, respuesta.length() - 3);
+            respuesta = respuesta.trim();
+
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode json = mapper.readTree(respuesta);
+
+            Conversacion.EvaluacionBienestar eval = new Conversacion.EvaluacionBienestar();
+            eval.setAnimo(json.get("animo").asInt());
+            eval.setSociabilidad(json.get("sociabilidad").asInt());
+            eval.setCognitivo(json.get("cognitivo").asInt());
+            eval.setObservacion(json.get("observacion").asText());
+            conversacion.setEvaluacionBienestar(eval);
+
+            List<Conversacion.ActividadSugerida> listaActividades = new ArrayList<>();
+            JsonNode actividades = json.get("actividades");
+            if (actividades != null && actividades.isArray()) {
+                for (JsonNode act : actividades) {
+                    Conversacion.ActividadSugerida actividad = new Conversacion.ActividadSugerida();
+                    actividad.setDescripcion(act.asText());
+                    listaActividades.add(actividad);
+                }
+            }
+            conversacion.setActividadesSugeridas(listaActividades);
+
+        } catch (Exception e) {
+            // Si falla la evaluación no interrumpimos el flujo normal
+        }
+    }
+
     public String enviarMensaje(Long mayorId, String mensajeUsuario) {
 
         List<Conversacion> conversaciones = conversacionRepositorio.findByMayorIdOrderByInicioDesc(mayorId);
@@ -139,7 +242,6 @@ public class ServicioAsistente {
 
         List<Map<String, Object>> contents = new ArrayList<>();
 
-        // Prompt con perfil integrado
         String promptCompleto = construirPromptConPerfil(mayorId);
 
         Map<String, Object> sistemaPart = new HashMap<>();
@@ -172,25 +274,8 @@ public class ServicioAsistente {
         nuevoContent.put("parts", List.of(nuevoPart));
         contents.add(nuevoContent);
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("contents", contents);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        HttpEntity<Map<String, Object>> peticion = new HttpEntity<>(body, headers);
-        RestTemplate restTemplate = new RestTemplate();
-
-        String urlConKey = urlGemini + "?key=" + apiKey;
-        ResponseEntity<Map> respuesta = restTemplate.postForEntity(urlConKey, peticion, Map.class);
-
-        String textoRespuesta = "";
-        try {
-            List<Map> candidates = (List<Map>) respuesta.getBody().get("candidates");
-            Map content = (Map) candidates.get(0).get("content");
-            List<Map> parts = (List<Map>) content.get("parts");
-            textoRespuesta = (String) parts.get(0).get("text");
-        } catch (Exception e) {
+        String textoRespuesta = llamarGemini(contents);
+        if (textoRespuesta.isEmpty()) {
             textoRespuesta = "Lo siento, no he podido procesar tu mensaje. ¿Puedes repetirlo?";
         }
 
@@ -205,6 +290,10 @@ public class ServicioAsistente {
         msgAsistente.setContenido(textoRespuesta);
         msgAsistente.setMomento(LocalDateTime.now());
         conversacion.getMensajes().add(msgAsistente);
+
+        if (conversacion.getMensajes().size() % 6 == 0) {
+            evaluarConversacion(conversacion);
+        }
 
         conversacionRepositorio.save(conversacion);
 

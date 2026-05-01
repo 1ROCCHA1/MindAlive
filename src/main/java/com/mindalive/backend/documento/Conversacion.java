@@ -6,7 +6,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.ArrayList;
 
-// Guarda el historial completo de conversaciones con la IA
 @Document(collection = "conversaciones")
 public class Conversacion {
 
@@ -19,12 +18,17 @@ public class Conversacion {
 
     private List<Mensaje> mensajes = new ArrayList<>();
 
-    // -1.0 muy triste, 0 neutro, 1.0 muy positivo
     private double puntuacionAnimo;
 
     private List<String> temas = new ArrayList<>();
 
     private boolean generoAlerta = false;
+
+    // Evaluación de bienestar al final de la conversación
+    private EvaluacionBienestar evaluacionBienestar;
+
+    // Actividades sugeridas por Mindi durante la conversación
+    private List<ActividadSugerida> actividadesSugeridas = new ArrayList<>();
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -47,9 +51,51 @@ public class Conversacion {
     public boolean isGeneroAlerta() { return generoAlerta; }
     public void setGeneroAlerta(boolean generoAlerta) { this.generoAlerta = generoAlerta; }
 
-    // Clase interna que representa cada mensaje del chat
+    public EvaluacionBienestar getEvaluacionBienestar() { return evaluacionBienestar; }
+    public void setEvaluacionBienestar(EvaluacionBienestar e) { this.evaluacionBienestar = e; }
+
+    public List<ActividadSugerida> getActividadesSugeridas() { return actividadesSugeridas; }
+    public void setActividadesSugeridas(List<ActividadSugerida> a) { this.actividadesSugeridas = a; }
+
+    public static class EvaluacionBienestar {
+        private int animo;        // 0-10
+        private int sociabilidad; // 0-10
+        private int cognitivo;    // 0-10
+        private String observacion; // nota breve de Gemini
+
+        public int getAnimo() { return animo; }
+        public void setAnimo(int a) { this.animo = a; }
+
+        public int getSociabilidad() { return sociabilidad; }
+        public void setSociabilidad(int s) { this.sociabilidad = s; }
+
+        public int getCognitivo() { return cognitivo; }
+        public void setCognitivo(int c) { this.cognitivo = c; }
+
+        public String getObservacion() { return observacion; }
+        public void setObservacion(String o) { this.observacion = o; }
+    }
+
+    public static class ActividadSugerida {
+        private String descripcion;
+        private boolean confirmadaPorMayor = false;
+        private boolean aprobadaPorCuidador = false;
+        private String editadaPorCuidador = "";
+
+        public String getDescripcion() { return descripcion; }
+        public void setDescripcion(String d) { this.descripcion = d; }
+
+        public boolean isConfirmadaPorMayor() { return confirmadaPorMayor; }
+        public void setConfirmadaPorMayor(boolean c) { this.confirmadaPorMayor = c; }
+
+        public boolean isAprobadaPorCuidador() { return aprobadaPorCuidador; }
+        public void setAprobadaPorCuidador(boolean a) { this.aprobadaPorCuidador = a; }
+
+        public String getEditadaPorCuidador() { return editadaPorCuidador; }
+        public void setEditadaPorCuidador(String e) { this.editadaPorCuidador = e; }
+    }
+
     public static class Mensaje {
-        // "usuario" o "asistente"
         private String rol;
         private String contenido;
         private LocalDateTime momento;
