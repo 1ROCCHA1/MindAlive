@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.http.*;
 
-
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -135,24 +134,25 @@ public class ServicioAsistente {
     }
 
     private String llamarGemini(List<Map<String, Object>> contents) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("contents", contents);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        HttpEntity<Map<String, Object>> peticion = new HttpEntity<>(body, headers);
-        RestTemplate restTemplate = new RestTemplate();
-
-        String urlConKey = urlGemini + "?key=" + apiKey;
-        ResponseEntity<Map> respuesta = restTemplate.postForEntity(urlConKey, peticion, Map.class);
-
         try {
+            Map<String, Object> body = new HashMap<>();
+            body.put("contents", contents);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<Map<String, Object>> peticion = new HttpEntity<>(body, headers);
+            RestTemplate restTemplate = new RestTemplate();
+
+            String urlConKey = urlGemini + "?key=" + apiKey;
+            ResponseEntity<Map> respuesta = restTemplate.postForEntity(urlConKey, peticion, Map.class);
+
             List<Map> candidates = (List<Map>) respuesta.getBody().get("candidates");
             Map content = (Map) candidates.get(0).get("content");
             List<Map> parts = (List<Map>) content.get("parts");
             return (String) parts.get(0).get("text");
         } catch (Exception e) {
+            System.out.println("GEMINI ERROR: " + e.getMessage());
             return "";
         }
     }
@@ -221,9 +221,10 @@ public class ServicioAsistente {
                 }
             }
             conversacion.setActividadesSugeridas(listaActividades);
+            conversacionRepositorio.save(conversacion);
 
         } catch (Exception e) {
-            // Si falla la evaluación no interrumpimos el flujo normal
+            System.out.println("EVALUACION ERROR: " + e.getMessage());
         }
     }
 
@@ -258,7 +259,9 @@ public class ServicioAsistente {
         sistemaRespuestaContent.put("parts", List.of(sistemaRespuestaPart));
         contents.add(sistemaRespuestaContent);
 
-        for (Conversacion.Mensaje msg : conversacion.getMensajes()) {
+        List<Conversacion.Mensaje> mensajes = conversacion.getMensajes();
+        int inicio = Math.max(0, mensajes.size() - 10);
+        for (Conversacion.Mensaje msg : mensajes.subList(inicio, mensajes.size())) {
             Map<String, Object> part = new HashMap<>();
             part.put("text", msg.getContenido());
             Map<String, Object> content = new HashMap<>();
@@ -291,11 +294,13 @@ public class ServicioAsistente {
         msgAsistente.setMomento(LocalDateTime.now());
         conversacion.getMensajes().add(msgAsistente);
 
-        if (conversacion.getMensajes().size() % 6 == 0) {
-            evaluarConversacion(conversacion);
-        }
-
         conversacionRepositorio.save(conversacion);
+
+        // Evaluación en segundo plano para no bloquear la respuesta
+        if (conversacion.getMensajes().size() % 6 == 0) {
+            final Conversacion convFinal = conversacion;
+            new Thread(() -> evaluarConversacion(convFinal)).start();
+        }
 
         return textoRespuesta;
     }
